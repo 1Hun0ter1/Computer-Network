@@ -3,7 +3,7 @@
 #### Introduction:
 This Python script is an ICMP Ping tool designed to measure network latency (RTT, Round-Trip Time) by sending ICMP Echo Requests to one or more target hosts and displaying the results in real-time using a graphical plot. The tool supports concurrent pinging of multiple hosts, logging the results, and dynamically adjusting threads based on user input.
 
-![image-20241011173631731](C:\Users\lenovo\AppData\Roaming\Typora\typora-user-images\image-20241011173631731.png)
+![image-20241011173607570](assets/image-20241011173607570-1728640057820-4.png)
 
 #### Features:
 - **ICMP Ping**: Sends ICMP Echo Requests and receives Echo Replies from target hosts to measure network round-trip time (RTT).
@@ -18,7 +18,7 @@ This Python script is an ICMP Ping tool designed to measure network latency (RTT
 
 - **Graceful Termination**: The pinging process is terminated if the visualization window is closed.
 
-  ![image-20241011173607570](C:\Users\lenovo\AppData\Roaming\Typora\typora-user-images\image-20241011173607570.png)
+  ![image-20241011173607570](assets/image-20241011173607570.png)
 
 #### Command-line Arguments:
 - `--hosts`: List of target hosts or IP addresses to ping (required).
@@ -90,7 +90,7 @@ The script will terminate gracefully when the visualization window is closed, an
 
 At the same time we beautify the output of the terminal.
 
-![16c7e89198351facccf31091c5749f7](D:\Documents\WeChat Files\wxid_eo8wrtgei2cf22\FileStorage\Temp\16c7e89198351facccf31091c5749f7.png)
+![16c7e89198351facccf31091c5749f7](assets/16c7e89198351facccf31091c5749f7.png)
 
 #### Requirements:
 - Python 3.x
@@ -99,7 +99,7 @@ At the same time we beautify the output of the terminal.
 #### Known Limitations:
 - ICMP packets require administrative (root) privileges to send. You may need to run the script with elevated privileges (e.g., using `sudo` on Linux).
 
-  ![image-20241011173913221](C:\Users\lenovo\AppData\Roaming\Typora\typora-user-images\image-20241011173913221.png)
+  ![image-20241011173913221](assets/image-20241011173913221.png)
 
 #### Appendix:
 
