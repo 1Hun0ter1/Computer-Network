@@ -1,10 +1,37 @@
 import socket
 import threading
 import os
+import logging
 import argparse
 import mimetypes  # 用于设置正确的 Content-Type
+import time
+from collections import defaultdict
+
 
 is_running = True  # 全局标志变量
+
+# 设置日志记录
+logging.basicConfig(filename='server.log', level=logging.INFO, format='%(asctime)s - %(message)s')
+
+# 记录请求日志的函数
+def log_request(client_address, file_path, status_code):
+    logging.info(f"Client: {client_address}, File: {file_path}, Status: {status_code}")
+
+# 速率限制的请求记录
+request_times = defaultdict(list)
+
+# 获取文件的 MIME 类型
+def get_content_type(file_path):
+    content_type, _ = mimetypes.guess_type(file_path)
+    return content_type or 'application/octet-stream'
+
+# 速率限制函数（限制每个 IP 每分钟请求数）
+def rate_limit(client_ip, max_requests=5, window=60):
+    current_time = time.time()
+    request_times[client_ip] = [t for t in request_times[client_ip] if t > current_time - window]
+    request_times[client_ip].append(current_time)
+    return len(request_times[client_ip]) <= max_requests
+
 
 def handleRequest(tcpSocket):
     try:
@@ -18,6 +45,14 @@ def handleRequest(tcpSocket):
         if file_path == '/':
             file_path = '/index.html'  # 默认文件
 
+        # 获取客户端 IP 地址用于速率限制
+        client_ip = tcpSocket.getpeername()[0]
+        if not rate_limit(client_ip):
+            tcpSocket.sendall("HTTP/1.1 429 Too Many Requests\r\n\r\n".encode())
+            tcpSocket.close()
+            return
+
+
         try:
             # 3. 打开文件并读取内容
             with open(file_path[1:], 'rb') as file:  # 去掉前面的 '/'
@@ -30,18 +65,22 @@ def handleRequest(tcpSocket):
 
             # 4. 构造HTTP响应头
             response_header = 'HTTP/1.1 200 OK\r\n'
-            response_header += f'Content-Type: {mime_type}\r\n'
+            response_header += f'Content-Type: {get_content_type(file_path)}\r\n'
             response_header += f'Content-Length: {len(response_body)}\r\n'
             response_header += 'Connection: close\r\n\r\n'
+            status_code = 200
         except FileNotFoundError:
             # 文件不存在，返回404错误
             response_header = 'HTTP/1.1 404 Not Found\r\n\r\n'
             response_body = b"<html><body><h1>404 Not Found</h1></body></html>"
+            status_code = 404
 
         # 5. 发送响应头和内容
         tcpSocket.sendall(response_header.encode() + response_body)
+
+        log_request(client_ip, file_path, status_code)
     except Exception as e:
-        print(f"Error handling request: {e}")
+        logging.error(f"Error handling request: {e}")
     finally:
         # 6. 关闭连接
         tcpSocket.close()
