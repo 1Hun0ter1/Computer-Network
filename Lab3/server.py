@@ -132,7 +132,7 @@ def startServer():
             try:
                 client_socket, client_address = server_socket.accept()
                 print(f"Connection from {client_address}")
-                thread = threading.Thread(target=handleRequest, args=(client_socket,))
+                thread = threading.Thread(target=handleRequest, args=(client_socket, client_address))
                 thread.start()
             except socket.timeout:
                 continue  # 在超时时继续检查 is_running
@@ -158,3 +158,4 @@ if __name__ == "__main__":
 
 
 # python server.py --port 8080 (旧)
+# python server.py (now)

@@ -7,6 +7,8 @@ Lab3/
 ├── server.py    (服务器监听)
 ├── client.py    (用户端发送)
 ├── index.html   (需要发送的文件)
+├── config.ini   (安全配置文件)
+├── server.log   (日志记录)
 └── README.md    
 ```
 
@@ -15,13 +17,13 @@ Lab3/
 首先在一个终端运行：
 
 ```
-python server.py --port 8080
+python server.py 
 ```
 
 接着新开启一个终端运行：
 
 ```
-python client.py --host 127.0.0.1 --port 8080 --file /index.html --clients 50
+python client.py 
 ```
 
 ## TODO
