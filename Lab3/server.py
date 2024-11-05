@@ -19,6 +19,10 @@ config.read('config.ini')
 HOST = config['server'].get('host', '127.0.0.1')
 PORT = config['server'].getint('port', 8080)
 MAX_CONNECTIONS = config['server'].getint('max_connections', 5)
+max_requests = config['rate_limit'].getint('max_requests', 5)
+window = config['rate_limit'].getint('window_seconds', 60)
+
+
 
 # 安全设置
 whitelist = set(config['security']['whitelist'].split(','))
@@ -26,7 +30,8 @@ blacklist = set(config['security']['blacklist'].split(','))
 
 
 # 设置日志记录
-logging.basicConfig(filename='server.log', level=logging.INFO, format='%(asctime)s - %(message)s')
+log_level = config['logging'].get('level', 'INFO')
+logging.basicConfig(level=getattr(logging, log_level))
 # 速率限制的请求记录
 request_times = defaultdict(list)
 
@@ -41,7 +46,7 @@ def get_content_type(file_path):
     return content_type or 'application/octet-stream'
 
 # 速率限制函数（限制每个 IP 每分钟请求数）
-def rate_limit(client_ip, max_requests=5, window=60):
+def rate_limit(client_ip):
     current_time = time.time()
     request_times[client_ip] = [t for t in request_times[client_ip] if t > current_time - window]
     request_times[client_ip].append(current_time)
@@ -51,7 +56,7 @@ def rate_limit(client_ip, max_requests=5, window=60):
 def handleRequest(tcpSocket, client_address):
     client_ip = client_address[0]
 
-    # 检查黑名单和白名单
+    # Check blacklist and whitelist
     if client_ip in blacklist:
         tcpSocket.sendall("HTTP/1.1 403 Forbidden\r\n\r\n".encode())
         tcpSocket.close()
@@ -61,57 +66,83 @@ def handleRequest(tcpSocket, client_address):
         tcpSocket.close()
         return
 
+    # Rate limiting check
+    if not rate_limit(client_ip):
+        tcpSocket.sendall("HTTP/1.1 429 Too Many Requests\r\n\r\n".encode())
+        tcpSocket.close()
+        return
 
     try:
-        # 1. 接收客户端请求
+        # Receive client request
         request = tcpSocket.recv(1024).decode()
 
-        # 2. 提取请求的文件路径
+        # Validate the HTTP request format
         request_line = request.splitlines()[0]
-        file_path = request_line.split()[1]
-
-        if file_path == '/':
-            file_path = '/index.html'  # 默认文件
-
-        # 获取客户端 IP 地址用于速率限制
-        client_ip = tcpSocket.getpeername()[0]
-        if not rate_limit(client_ip):
-            tcpSocket.sendall("HTTP/1.1 429 Too Many Requests\r\n\r\n".encode())
+        parts = request_line.split()
+        if len(parts) != 3 or parts[0] != "GET":
+            # Invalid request format
+            tcpSocket.sendall("HTTP/1.1 400 Bad Request\r\n\r\n".encode())
+            log_request(client_ip, "INVALID REQUEST", 400)
             tcpSocket.close()
             return
 
+        file_path = parts[1]
+        if file_path == '/':
+            file_path = '/index.html'  # Default file
 
+        # Path traversal prevention
+        if ".." in file_path or file_path.startswith("/.."):
+            tcpSocket.sendall("HTTP/1.1 403 Forbidden\r\n\r\n".encode())
+            log_request(client_ip, file_path, 403)
+            tcpSocket.close()
+            return
+
+        # Attempt to open the requested file
         try:
-            # 3. 打开文件并读取内容
-            with open(file_path[1:], 'rb') as file:  # 去掉前面的 '/'
+            with open(file_path[1:], 'rb') as file:  # Remove leading '/'
                 response_body = file.read()
 
-            # 确定 Content-Type
-            mime_type, _ = mimetypes.guess_type(file_path)
-            if mime_type is None:
-                mime_type = 'application/octet-stream'
+            # Check file permissions
+            if not os.access(file_path[1:], os.R_OK):
+                tcpSocket.sendall("HTTP/1.1 403 Forbidden\r\n\r\n".encode())
+                log_request(client_ip, file_path, 403)
+                tcpSocket.close()
+                return
 
-            # 4. 构造HTTP响应头
+            # Determine Content-Type and set UTF-8 encoding for text content
+            content_type = get_content_type(file_path)
+            if content_type.startswith("text/"):
+                content_type += "; charset=utf-8"
+
+            # 4. Build HTTP response headers
             response_header = 'HTTP/1.1 200 OK\r\n'
-            response_header += f'Content-Type: {get_content_type(file_path)}\r\n'
+            response_header += f'Content-Type: {content_type}\r\n'
             response_header += f'Content-Length: {len(response_body)}\r\n'
             response_header += 'Connection: close\r\n\r\n'
             status_code = 200
+
         except FileNotFoundError:
-            # 文件不存在，返回404错误
+            # File not found, return 404 error
             response_header = 'HTTP/1.1 404 Not Found\r\n\r\n'
             response_body = b"<html><body><h1>404 Not Found</h1></body></html>"
             status_code = 404
 
-        # 5. 发送响应头和内容
-        tcpSocket.sendall(response_header.encode() + response_body)
+        except PermissionError:
+            # Permission denied, return 403 error
+            response_header = 'HTTP/1.1 403 Forbidden\r\n\r\n'
+            response_body = b"<html><body><h1>403 Forbidden</h1></body></html>"
+            status_code = 403
 
+        # Send response header and body
+        tcpSocket.sendall(response_header.encode() + response_body)
         log_request(client_ip, file_path, status_code)
+
     except Exception as e:
         logging.error(f"Error handling request: {e}")
+        tcpSocket.sendall("HTTP/1.1 500 Internal Server Error\r\n\r\n".encode())
     finally:
-        # 6. 关闭连接
         tcpSocket.close()
+
 
 
 # def startServer(serverAddress, serverPort):
