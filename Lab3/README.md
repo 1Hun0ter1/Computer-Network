@@ -1,7 +1,7 @@
 # Lab3 Web Server
 
 ## 文件说明：
-
+client -> get request ->  server (监听，返回一个文件)
 ```
 Lab3/
 ├── server.py    (服务器监听)
