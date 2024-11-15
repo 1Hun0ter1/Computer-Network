@@ -26,6 +26,13 @@ python server.py
 python client.py 
 ```
 
+如果需要测试：
+
+```
+python test_client.py
+```
+
+
 ## TODO
 
 ```
