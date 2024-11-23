@@ -118,7 +118,7 @@ method_combobox.set("GET")
 tk.Label(root, text="File Path:").grid(row=3, column=0, padx=10, pady=5)
 file_path_entry = tk.Entry(root)
 file_path_entry.grid(row=3, column=1, padx=10, pady=5)
-file_path_entry.insert(0, "/index.html")
+file_path_entry.insert(0, "/upload/")
 
 # Number of Clients
 tk.Label(root, text="Number of Clients:").grid(row=4, column=0, padx=10, pady=5)
