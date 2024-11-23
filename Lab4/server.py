@@ -24,8 +24,8 @@ max_requests = config['rate_limit'].getint('max_requests', 5)
 window = config['rate_limit'].getint('window_seconds', 60)
 
 # Security settings
-whitelist = set(config['security']['whitelist'].split(','))
-blacklist = set(config['security']['blacklist'].split(','))
+whitelist = set(config['security']['whitelist'].split(',')) if config['security']['whitelist'] else set()
+blacklist = set(config['security']['blacklist'].split(',')) if config['security']['blacklist'] else set()
 
 # Logging setup
 logging.basicConfig(level=logging.INFO)
@@ -36,7 +36,7 @@ request_times = defaultdict(list)
 # Initialize Tkinter GUI
 root = tk.Tk()
 root.title("Server Dashboard")
-root.geometry("800x500")
+root.geometry("400x500")
 
 # Log display area in GUI
 log_area = scrolledtext.ScrolledText(root, width=90, height=20, state='disabled', wrap='word', font=('Courier', 10))
@@ -66,7 +66,7 @@ def rate_limit(client_ip):
     request_times[client_ip].append(current_time)
     return len(request_times[client_ip]) <= max_requests
 
-# Request handling function
+# Handle incoming requests
 def handle_request(tcp_socket, client_address):
     client_ip = client_address[0]
     try:
@@ -74,86 +74,106 @@ def handle_request(tcp_socket, client_address):
         if client_ip in blacklist:
             tcp_socket.sendall("HTTP/1.1 403 Forbidden\r\n\r\n".encode())
             log_message(f"Blocked {client_ip} - Blacklisted", "red")
-            tcp_socket.close()
             return
         if whitelist and client_ip not in whitelist:
             tcp_socket.sendall("HTTP/1.1 403 Forbidden\r\n\r\n".encode())
             log_message(f"Blocked {client_ip} - Not Whitelisted", "red")
-            tcp_socket.close()
             return
 
         # Rate limiting check
         if not rate_limit(client_ip):
             tcp_socket.sendall("HTTP/1.1 429 Too Many Requests\r\n\r\n".encode())
             log_message(f"{client_ip} - Rate Limit Exceeded (429)", "orange")
-            tcp_socket.close()
             return
 
-        # Receive and process the request
+        # Receive request
         request = tcp_socket.recv(1024).decode()
         request_line = request.splitlines()[0]
         parts = request_line.split()
 
-        # Validate request format
-        if len(parts) != 3 or parts[0] != "GET":
+        if len(parts) < 3:
             tcp_socket.sendall("HTTP/1.1 400 Bad Request\r\n\r\n".encode())
-            log_message(f"{client_ip} - Invalid Request (400)", "purple")
-            tcp_socket.close()
+            log_message(f"{client_ip} - Invalid Request Format (400)", "purple")
             return
 
+        method = parts[0]
         file_path = parts[1]
         if file_path == '/':
-            file_path = '/index.html'  # Default file
+            file_path = '/index.html'
 
         # Path traversal prevention
         if ".." in file_path or file_path.startswith("/.."):
             tcp_socket.sendall("HTTP/1.1 403 Forbidden\r\n\r\n".encode())
             log_message(f"{client_ip} - Path Traversal Attempt Blocked (403)", "red")
-            tcp_socket.close()
             return
 
-        # Attempt to open the requested file
-        try:
-            with open(file_path[1:], 'rb') as file:
-                response_body = file.read()
+        # Read the body for methods like POST, PUT
+        body = None
+        # if "Content-Length" in request:
+        #     content_length = int([line.split(": ")[1] for line in request.splitlines() if "Content-Length" in line][0])
+        #     body = tcp_socket.recv(content_length).decode()
+        if "Content-Length" in request:
+            content_length = int([line.split(": ")[1] for line in request.splitlines() if "Content-Length" in line][0])
 
-            # Check file permissions
-            if not os.access(file_path[1:], os.R_OK):
-                tcp_socket.sendall("HTTP/1.1 403 Forbidden\r\n\r\n".encode())
-                log_message(f"{client_ip} - Permission Denied (403)", "red")
-                tcp_socket.close()
-                return
+            headers_end = request.find("\r\n\r\n") + 4  # 找到空行结束的位置
+            body_start = headers_end
+            body = request[body_start:body_start + content_length]
 
-            # Determine Content-Type and set UTF-8 encoding for text content
-            content_type = get_content_type(file_path)
-            if content_type.startswith("text/"):
-                content_type += "; charset=utf-8"
+        # Handle HTTP methods
+        if method == "GET":
+            try:
+                with open(file_path[1:], 'rb') as file:
+                    response_body = file.read()
+                content_type = get_content_type(file_path)
+                response_header = f"HTTP/1.1 200 OK\r\nContent-Type: {content_type}\r\nContent-Length: {len(response_body)}\r\nConnection: close\r\n\r\n"
+                tcp_socket.sendall(response_header.encode() + response_body)
+                log_message(f"{client_ip} - File Served: {file_path} (200)", "green")
+            except FileNotFoundError:
+                tcp_socket.sendall("HTTP/1.1 404 Not Found\r\n\r\n".encode())
+                log_message(f"{client_ip} - File Not Found (404)", "orange")
 
-            # Build HTTP response headers
-            response_header = 'HTTP/1.1 200 OK\r\n'
-            response_header += f'Content-Type: {content_type}\r\n'
-            response_header += f'Content-Length: {len(response_body)}\r\n'
-            response_header += 'Connection: close\r\n\r\n'
+        elif method == "POST":
+            try:
+                with open(file_path[1:], "a") as file:
+                    print(body)
+                    file.write(body or "")
+                tcp_socket.sendall("HTTP/1.1 200 OK\r\n\r\nData Appended Successfully".encode())
+                log_message(f"{client_ip} - POST: Data Appended to {file_path} (200)", "green")
+            except FileNotFoundError:
+                with open(file_path[1:], "w") as file:
+                    file.write(body or "")
+                tcp_socket.sendall("HTTP/1.1 201 Created\r\n\r\nFile Created and Data Appended".encode())
+                log_message(f"{client_ip} - POST: File Created and Data Appended to {file_path} (201)", "blue")
 
-            # Send response header and body
-            tcp_socket.sendall(response_header.encode() + response_body)
-            log_message(f"{client_ip} - File Served: {file_path} (200)", "green")
+        elif method == "PUT":
+            try:
+                with open(file_path[1:], "w") as file:
+                    file.write(body or "")
+                tcp_socket.sendall("HTTP/1.1 201 Created\r\n\r\nFile Created Successfully".encode())
+                log_message(f"{client_ip} - PUT: File {file_path} Created (201)", "green")
+            except Exception as e:
+                tcp_socket.sendall(f"HTTP/1.1 500 Internal Server Error\r\n\r\n{e}".encode())
+                log_message(f"{client_ip} - PUT Error: {e} (500)", "red")
 
-        except FileNotFoundError:
-            response_header = 'HTTP/1.1 404 Not Found\r\n\r\n'
-            response_body = b"<html><body><h1>404 Not Found</h1></body></html>"
-            tcp_socket.sendall(response_header.encode() + response_body)
-            log_message(f"{client_ip} - File Not Found (404)", "orange")
+        elif method == "DELETE":
+            try:
+                os.remove(file_path[1:])
+                tcp_socket.sendall("HTTP/1.1 200 OK\r\n\r\nFile Deleted Successfully".encode())
+                log_message(f"{client_ip} - DELETE: File {file_path} Deleted (200)", "green")
+            except FileNotFoundError:
+                tcp_socket.sendall("HTTP/1.1 404 Not Found\r\n\r\nFile Not Found".encode())
+                log_message(f"{client_ip} - DELETE: File Not Found (404)", "orange")
+            except Exception as e:
+                tcp_socket.sendall(f"HTTP/1.1 500 Internal Server Error\r\n\r\n{e}".encode())
+                log_message(f"{client_ip} - DELETE Error: {e} (500)", "red")
 
-        except PermissionError:
-            response_header = 'HTTP/1.1 403 Forbidden\r\n\r\n'
-            response_body = b"<html><body><h1>403 Forbidden</h1></body></html>"
-            tcp_socket.sendall(response_header.encode() + response_body)
-            log_message(f"{client_ip} - Permission Denied (403)", "red")
+        else:
+            tcp_socket.sendall(f"HTTP/1.1 405 Method Not Allowed\r\n\r\nMethod {method} Not Allowed".encode())
+            log_message(f"{client_ip} - Unsupported Method {method} (405)", "orange")
 
     except Exception as e:
-        log_message(f"Error handling request from {client_address}: {e}", "red")
         tcp_socket.sendall("HTTP/1.1 500 Internal Server Error\r\n\r\n".encode())
+        log_message(f"Error handling request from {client_address}: {e}", "red")
     finally:
         tcp_socket.close()
 
@@ -162,6 +182,7 @@ def start_server():
     global is_running
     status_label.config(text="Server Status: Running", fg="green")
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)  # Reuse socket
     server_socket.bind((HOST, PORT))
     server_socket.listen(MAX_CONNECTIONS)
     log_message(f"Server started on {HOST}:{PORT}", "blue")
@@ -180,13 +201,22 @@ def start_server():
 
 # Start and stop server control functions
 def start_server_thread():
-    threading.Thread(target=start_server).start()
+    global is_running
+    is_running = True
+    threading.Thread(target=start_server, daemon=True).start()
 
 def stop_server():
     global is_running
     is_running = False
     status_label.config(text="Server Status: Stopped", fg="red")
     log_message("Server stopping...", "red")
+
+# Graceful shutdown on GUI close
+def on_close():
+    stop_server()
+    root.destroy()
+
+root.protocol("WM_DELETE_WINDOW", on_close)
 
 # Buttons to start and stop the server
 start_button = tk.Button(root, text="Start Server", command=start_server_thread, bg="green", fg="white")
