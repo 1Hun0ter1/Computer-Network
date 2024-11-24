@@ -10,6 +10,7 @@ PROXY_HOST = '127.0.0.1'
 PROXY_PORT = 8001
 MAX_CONNECTIONS = 5
 CACHE_DIR = './cache'
+DOWNLOAD_DIR = './downloads'  # Directory to save downloaded images
 
 # Global variables for server control
 is_running = False
@@ -17,20 +18,16 @@ is_running = False
 # Logging setup
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(message)s")
 
+
 # Function to fetch content from the actual server
-def fetch_from_server(server_host, server_port, method, path, body=None):
+def fetch_from_server(server_host, server_port, request):
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
-            server_socket.connect((server_host, server_port))
+            # DNS resolution
+            server_ip = socket.gethostbyname(server_host)
+            server_socket.connect((server_ip, server_port))
 
-            # Construct the request to the web server
-            request = f"{method} {path} HTTP/1.1\r\nHost: {server_host}\r\nConnection: close\r\n"
-            if body:
-                request += f"Content-Length: {len(body)}\r\n"
-            request += "\r\n"
-            if body:
-                request += body
-
+            # Send request to the web server
             server_socket.sendall(request.encode())
 
             # Fetch response from server
@@ -42,15 +39,20 @@ def fetch_from_server(server_host, server_port, method, path, body=None):
                 response += data
 
             return response
+    except socket.gaierror:
+        log_message(f"DNS resolution failed for {server_host}", "red")
+        return b"HTTP/1.1 502 Bad Gateway\r\n\r\n"
     except Exception as e:
         log_message(f"Error fetching from server: {e}", "red")
-        return None
+        return b"HTTP/1.1 500 Internal Server Error\r\n\r\n"
+
 
 # Proxy request handler
 def handle_request(client_socket):
-    global request_count
     try:
+        # Receive request from client
         request = client_socket.recv(1024).decode()
+        log_message(f"Received request:\n{request}", "orange")
         request_lines = request.splitlines()
         if len(request_lines) == 0:
             return
@@ -59,45 +61,56 @@ def handle_request(client_socket):
         request_line = request_lines[0]
         method, path, _ = request_line.split()
 
-        # Forward requests to a predefined server
-        web_server_host = '127.0.0.1'
-        web_server_port = 8080
+        # Extract Host header
+        host_line = [line for line in request_lines if line.lower().startswith("host:")]
+        if not host_line:
+            client_socket.sendall(b"HTTP/1.1 400 Bad Request\r\n\r\nMissing Host header")
+            return
 
-        # Determine cache file path
-        cache_file_path = os.path.join(CACHE_DIR, path.strip('/'))
-        os.makedirs(os.path.dirname(cache_file_path), exist_ok=True)
+        host = host_line[0].split(":", 1)[1].strip()
+        if host.startswith("http://") or host.startswith("https://"):
+            host = host.split("://", 1)[1]  # Remove protocol part
+        host = host.split("/", 1)[0]  # Remove trailing paths or ports
 
-        if method == "GET":
-            if os.path.exists(cache_file_path):
-                log_message(f"Cache hit for {path}", "green")
-                with open(cache_file_path, 'rb') as f:
-                    response = f.read()
-            else:
-                log_message(f"Cache miss for {path}. Fetching from server.", "orange")
-                response = fetch_from_server(web_server_host, web_server_port, method, path)
-                if response:
-                    status_line = response.split(b"\r\n", 1)[0].decode()
-                    if "200 OK" in status_line:
-                        with open(cache_file_path, 'wb') as f:
-                            f.write(response)
-        elif method in ["POST", "PUT", "DELETE"]:
-            body = None
-            if "Content-Length" in request:
-                content_length = int([line.split(": ")[1] for line in request_lines if "Content-Length" in line][0])
-                headers_end = request.find("\r\n\r\n") + 4
-                body = request[headers_end:headers_end + content_length]
-            response = fetch_from_server(web_server_host, web_server_port, method, path, body)
-        else:
-            response = b"HTTP/1.1 405 Method Not Allowed\r\n\r\n"
+        # Determine target server
+        web_server_host = host
+        web_server_port = 80  # Default HTTP port
 
+        # Forward request to the target server
+        response = fetch_from_server(web_server_host, web_server_port, request)
         if response:
+            # Send response back to the client
             client_socket.sendall(response)
 
+            # Parse headers to check for Content-Type
+            response_headers, response_body = response.split(b"\r\n\r\n", 1)
+            headers = response_headers.decode(errors='ignore').split("\r\n")
+            content_type_line = [line for line in headers if line.lower().startswith("content-type:")]
+
+            if content_type_line:
+                content_type = content_type_line[0].split(":", 1)[1].strip()
+                if content_type.startswith("image/"):  # Check if the response is an image
+                    # Extract file extension from Content-Type
+                    file_extension = content_type.split("/")[-1]
+                    if not file_extension:
+                        file_extension = "png"  # Default to PNG if no extension is found
+
+                    # Ensure download directory exists
+                    os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+
+                    # Save image to local disk
+                    filename = path.split("/")[-1] or f"downloaded_image.{file_extension}"
+                    filepath = os.path.join(DOWNLOAD_DIR, filename)
+                    with open(filepath, "wb") as image_file:
+                        image_file.write(response_body)
+
+                    log_message(f"Image saved as {filepath}", "green")
     except Exception as e:
         log_message(f"Error handling request: {e}", "red")
         client_socket.sendall(b"HTTP/1.1 500 Internal Server Error\r\n\r\n")
     finally:
         client_socket.close()
+
 
 # GUI functions
 def log_message(message, color="black"):
@@ -106,6 +119,7 @@ def log_message(message, color="black"):
     log_area.tag_config("color", foreground=color)
     log_area.config(state='disabled')
     log_area.see(tk.END)
+
 
 def start_proxy():
     global is_running
@@ -117,10 +131,12 @@ def start_proxy():
     log_message(f"Proxy server starting on {PROXY_HOST}:{PROXY_PORT}", "blue")
     threading.Thread(target=run_proxy_server, daemon=True).start()
 
+
 def stop_proxy():
     global is_running
     is_running = False
     log_message("Proxy server stopping...", "red")
+
 
 def run_proxy_server():
     proxy_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -139,13 +155,14 @@ def run_proxy_server():
         proxy_socket.close()
         log_message("Proxy server stopped", "red")
 
+
 # GUI setup
 root = tk.Tk()
 root.title("Proxy Server")
 root.geometry("400x500")
 
 # Log display area
-log_area = scrolledtext.ScrolledText(root, width=90, height=30, state='disabled', wrap=tk.WORD)
+log_area = scrolledtext.ScrolledText(root, width=80, height=30, state='disabled', wrap=tk.WORD)
 log_area.pack(pady=10)
 
 # Buttons

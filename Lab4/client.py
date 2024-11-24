@@ -2,32 +2,29 @@ import socket
 import threading
 import tkinter as tk
 from tkinter import messagebox, ttk
+import os
+
+# Directory to save images
+DOWNLOAD_DIR = "./downloads"
 
 # Send HTTP request
-def send_request(proxyAddress, proxyPort, method, file_path, body=None):
+def send_request(serverAddress, serverPort, method, file_path, host, body=None):
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
             # Set a timeout to prevent hanging
             client_socket.settimeout(10)
-            client_socket.connect((proxyAddress, proxyPort))
+            client_socket.connect((serverAddress, serverPort))
 
             # Build HTTP request
-            request = f"{method} {file_path} HTTP/1.1\r\nHost: {proxyAddress}\r\n"
+            request = f"{method} {file_path} HTTP/1.1\r\nHost: {host}\r\n"
             if method in ["POST", "PUT"] and body:
                 request += f"Content-Length: {len(body)}\r\n\r\n{body}"
             else:
                 request += "\r\n"
 
-            print("sending request from client is: " )
-            print(request) #
+            print("Sending request:")
+            print(request)
 
-            """
-            'PUT /index.html HTTP/1.1
-            Host: 127.0.0.1
-            Content-Length: 7
-            
-            qwasdas'
-            """
             client_socket.sendall(request.encode())
 
             # Receive response
@@ -41,19 +38,43 @@ def send_request(proxyAddress, proxyPort, method, file_path, body=None):
                 except socket.timeout:
                     break
 
+            # Split headers and body
+            headers, _, body = response.partition(b"\r\n\r\n")
+            headers_str = headers.decode(errors="replace")
+
+            # Check for content type in headers
+            content_type = None
+            for line in headers_str.split("\r\n"):
+                if line.lower().startswith("content-type:"):
+                    content_type = line.split(":")[1].strip()
+                    break
+
+            # If content type is image, save to file
+            if content_type and content_type.startswith("image/"):
+                file_extension = content_type.split("/")[-1]
+                filename = file_path.split("/")[-1] or f"downloaded_image.{file_extension}"
+                os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+                filepath = os.path.join(DOWNLOAD_DIR, filename)
+
+                with open(filepath, "wb") as image_file:
+                    image_file.write(body)
+                return f"Image saved to {filepath}"
+
+            # If not image, return response as string
             response_str = response.decode(errors="replace")  # Avoid decode errors
             return response_str
     except Exception as e:
         return f"Error: {e}"
 
 # Simulate multiple clients
-def simulate_multiple_clients(proxyAddress, proxyPort, method, file_path, num_clients, body=None):
+def simulate_multiple_clients(serverAddress, serverPort, method, file_path, host, num_clients, body=None):
     responses = []
 
     def threaded_request():
-        response = send_request(proxyAddress, proxyPort, method, file_path, body)
+        response = send_request(serverAddress, serverPort, method, file_path, host, body)
         responses.append(response)
-        root.after(0, update_response_display, response)  # Update GUI safely
+        if not response.startswith("Image saved to"):  # Only update UI for non-image responses
+            root.after(0, update_response_display, response)
 
     threads = []
     for _ in range(num_clients):
@@ -61,7 +82,6 @@ def simulate_multiple_clients(proxyAddress, proxyPort, method, file_path, num_cl
         threads.append(thread)
         thread.start()
 
-    # Allow threads to run in the background without joining them
     return responses
 
 # Update response display
@@ -73,11 +93,12 @@ def update_response_display(response):
 
 # Start simulation from UI
 def start_simulation():
-    proxyAddress = proxy_ip_entry.get()
-    proxyPort = int(proxy_port_entry.get())
+    serverAddress = proxy_ip_entry.get()
+    serverPort = int(proxy_port_entry.get())
     method = method_combobox.get()
     file_path = file_path_entry.get()
     num_clients = int(num_clients_entry.get())
+    host = host_entry.get().strip()
     body = body_text.get("1.0", tk.END).strip()
 
     # Ensure body is provided for POST/PUT
@@ -88,7 +109,7 @@ def start_simulation():
     # Run simulation in a separate thread to prevent GUI blocking
     threading.Thread(
         target=simulate_multiple_clients,
-        args=(proxyAddress, proxyPort, method, file_path, num_clients, body if body else None),
+        args=(serverAddress, serverPort, method, file_path, host, num_clients, body if body else None),
         daemon=True,
     ).start()
 
@@ -97,48 +118,54 @@ root = tk.Tk()
 root.title("HTTP Client Load Simulator")
 
 # Proxy IP
-tk.Label(root, text="Proxy IP:").grid(row=0, column=0, padx=10, pady=5)
+tk.Label(root, text="Proxy/Server IP:").grid(row=0, column=0, padx=10, pady=5)
 proxy_ip_entry = tk.Entry(root)
 proxy_ip_entry.grid(row=0, column=1, padx=10, pady=5)
 proxy_ip_entry.insert(0, "127.0.0.1")
 
 # Proxy Port
-tk.Label(root, text="Proxy Port:").grid(row=1, column=0, padx=10, pady=5)
+tk.Label(root, text="Proxy/Server Port:").grid(row=1, column=0, padx=10, pady=5)
 proxy_port_entry = tk.Entry(root)
 proxy_port_entry.grid(row=1, column=1, padx=10, pady=5)
 proxy_port_entry.insert(0, "8001")
 
+# Host Header
+tk.Label(root, text="Host (for remote):").grid(row=2, column=0, padx=10, pady=5)
+host_entry = tk.Entry(root)
+host_entry.grid(row=2, column=1, padx=10, pady=5)
+host_entry.insert(0, "127.0.0.1")
+
 # HTTP Method
-tk.Label(root, text="HTTP Method:").grid(row=2, column=0, padx=10, pady=5)
+tk.Label(root, text="HTTP Method:").grid(row=3, column=0, padx=10, pady=5)
 method_combobox = ttk.Combobox(root, values=["GET", "POST", "PUT", "DELETE"], state="readonly")
-method_combobox.grid(row=2, column=1, padx=10, pady=5)
+method_combobox.grid(row=3, column=1, padx=10, pady=5)
 method_combobox.set("GET")
 
 # File Path
-tk.Label(root, text="File Path:").grid(row=3, column=0, padx=10, pady=5)
+tk.Label(root, text="File Path:").grid(row=4, column=0, padx=10, pady=5)
 file_path_entry = tk.Entry(root)
-file_path_entry.grid(row=3, column=1, padx=10, pady=5)
-file_path_entry.insert(0, "/upload/")
+file_path_entry.grid(row=4, column=1, padx=10, pady=5)
+file_path_entry.insert(0, "/index.html")
 
 # Number of Clients
-tk.Label(root, text="Number of Clients:").grid(row=4, column=0, padx=10, pady=5)
+tk.Label(root, text="Number of Clients:").grid(row=5, column=0, padx=10, pady=5)
 num_clients_entry = tk.Entry(root)
-num_clients_entry.grid(row=4, column=1, padx=10, pady=5)
+num_clients_entry.grid(row=5, column=1, padx=10, pady=5)
 num_clients_entry.insert(0, "1")
 
 # Request Body
-tk.Label(root, text="Request Body (POST/PUT):").grid(row=5, column=0, padx=10, pady=5)
+tk.Label(root, text="Request Body (POST/PUT):").grid(row=6, column=0, padx=10, pady=5)
 body_text = tk.Text(root, height=5, width=40)
-body_text.grid(row=5, column=1, padx=10, pady=5)
+body_text.grid(row=6, column=1, padx=10, pady=5)
 
 # Start Button
 start_button = tk.Button(root, text="Start Simulation", command=start_simulation, bg="green", fg="white")
-start_button.grid(row=6, column=0, columnspan=2, pady=10)
+start_button.grid(row=7, column=0, columnspan=2, pady=10)
 
 # Response Display Area
-tk.Label(root, text="Server Responses:").grid(row=7, column=0, padx=10, pady=5)
-response_display = tk.Text(root, wrap=tk.WORD, width=80, height=20, state="disabled")
-response_display.grid(row=8, column=0, columnspan=2, padx=10, pady=10)
+tk.Label(root, text="Server Responses:").grid(row=8, column=0, padx=10, pady=5)
+response_display = tk.Text(root, wrap=tk.WORD, width=80, height=35, state="disabled")
+response_display.grid(row=25, column=0, columnspan=2, padx=10, pady=10)
 
 root.mainloop()
 

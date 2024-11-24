@@ -1,0 +1,93 @@
+HTTP/1.1 200 OK
+Server: wts/1.7.4
+Date: Sun, 24 Nov 2024 03:16:34 GMT
+Content-Type: text/html
+Transfer-Encoding: chunked
+Connection: close
+Vary: Accept-Encoding
+Last-Modified: Sat, 23 May 2020 09:56:46 GMT
+ETag: W/"0432178e830d61:0"
+Vary: Accept-Encoding
+
+a7f
+<!DOCTYPE html>
+<!-- www.8tupian.com -->
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta http-equiv="Cache-Control" content="no-transform" /> 
+<meta http-equiv="Cache-Control" content="no-siteapp" /> 
+<meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=yes" />
+<title>登录</title>
+    <script type="text/javascript" src="./js/jquery.min.js"></script>
+    <script type="text/javascript" src="./js/member.js"></script>
+<link rel="stylesheet" type="text/css" href="./css/style.css">
+<link rel="stylesheet" type="text/css" href="./css/style_mobile_login.css">
+<style type="text/css">
+@media(max-width:760px)
+{  
+	body {width:100%;}
+	#divPC{display:none}
+	#divMobile{display:block}	
+	#divMobile{width:100%}  
+	#divMobile img{max-width:90%} 
+}
+@media(min-width:760px)
+{  
+	#divPC{display:block}
+	#divMobile{display:none}	
+}
+</style>
+</head>
+<body>
+<div id="divPC">
+<div class="loginbg">
+<div class="login"><p>登 录</p></div>
+<div class="loginBOX clearfix">
+    <form id="form" method="post" action="login.php" onsubmit="return CheckLog();">
+        <div class="m_Bleft">
+            <ul>
+
+                <li class="clearfix"><i><img src="./images/login_05.png" alt="账户"></i><input type="text" name="username" id="username" placeholder="用户名"></li>
+
+                <li class="clearfix"><i><img src="./images/login_03.png" alt="密码"></i><input type="password" name="password" id="password"  placeholder="请输入密码"></li>
+
+            </ul>
+
+            <span>
+                <input type="submit" value="立 即 登 录">&nbsp;&nbsp;&nbsp;&nbsp;
+				<a href="register.html"><font color="green">马上注册</font></a>
+            </span>
+        </div>
+    </form>
+</div>
+</div>
+</div>
+<div id="divMobile">
+<div class="main">
+	<div class="w3_login">
+		<div class="w3_login_module">
+			<div class="module form-module">
+				<div class="toggle">
+					<i class="fa fa-times fa-pencil"></i>
+				</div>
+				<div class="form">
+					<h2>登录</h2>
+					<form action="login.php" method="post"  onsubmit="return CheckLog_m();">
+						<input type="text" name="username" id="username_m" placeholder="用户名"  />
+						<input type="password" name="password" id="password_m" placeholder="请输入密码"  />
+						<div id="your-dom-id" class="nc-container"></div><br>
+						<input type="submit" value="登录" />
+					</form>
+				</div>
+				<div class="cta"><a href="register.html">立即注册</a></span></div>
+			</div>
+		</div>
+	</div>
+</div>
+</div>
+</body>
+<!-- www.8tupian.com -->
+</html>
+0
+

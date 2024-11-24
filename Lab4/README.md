@@ -1,14 +1,18 @@
-# Lab3 Web Server
+# Lab4 Web Server
 
 ## 文件说明：
-client -> get request ->  server (监听，返回一个文件)
+client -> get request ->  proxy  ( 若cache 中无 request )->   server (监听，返回一个文件)
+client -> get request ->  proxy  ( 若cache 中有 request ) 直接返回
+
 ```
-Lab3/
+Lab4/
 ├── server.py    (服务器监听)
 ├── client.py    (用户端发送)
-├── index.html   (需要发送的文件)
-├── config.ini   (安全配置文件)
-├── server.log   (日志记录)
+├── proxy.py    (中间代理转发)
+├── downloads (存储爬取的图片)
+├── uploads (本地模拟server的数据库)
+├── cache (proxy 管理的缓存库)
+├── config.ini (配置文件库)
 └── README.md    
 ```
 
@@ -23,23 +27,21 @@ python server.py
 接着新开启一个终端运行：
 
 ```
+python proxy.py 
+```
+
+最后新开启一个终端运行：
+
+```
 python client.py 
 ```
 
-如果需要测试：
-
-```
-python test_client.py
-```
 
 
 ## TODO
 
 ```
-1.美化输出用户端输出
+1.Release our code in the future. 
 
-2.添加可视化
-
-3....
 ```
 
