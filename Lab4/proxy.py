@@ -20,14 +20,21 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(message)s")
 
 
 # Function to fetch content from the actual server
-def fetch_from_server(server_host, server_port, request):
+def fetch_from_server(server_host, server_port, method, path, body=None):
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
             # DNS resolution
             server_ip = socket.gethostbyname(server_host)
             server_socket.connect((server_ip, server_port))
 
-            # Send request to the web server
+            # Construct the request to the web server
+            request = f"{method} {path} HTTP/1.1\r\nHost: {server_host}\r\nConnection: close\r\n"
+            if body:
+                request += f"Content-Length: {len(body)}\r\n"
+            request += "\r\n"
+            if body:
+                request += body
+
             server_socket.sendall(request.encode())
 
             # Fetch response from server
@@ -50,9 +57,7 @@ def fetch_from_server(server_host, server_port, request):
 # Proxy request handler
 def handle_request(client_socket):
     try:
-        # Receive request from client
         request = client_socket.recv(1024).decode()
-        log_message(f"Received request:\n{request}", "orange")
         request_lines = request.splitlines()
         if len(request_lines) == 0:
             return
@@ -66,29 +71,42 @@ def handle_request(client_socket):
         if not host_line:
             client_socket.sendall(b"HTTP/1.1 400 Bad Request\r\n\r\nMissing Host header")
             return
+        """
+        host_line = ['Host: http://www-x-physicsfaculty-x-top.img.addlink.cn']
+        """
+        # host = host_line[0].split(":")[1].strip()  # Extract host name
 
-        host = host_line[0].split(":", 1)[1].strip()
+        host = host_line[0].split(":", 1)[1].strip()  # Initial extraction
+
+
         if host.startswith("http://") or host.startswith("https://"):
             host = host.split("://", 1)[1]  # Remove protocol part
-        host = host.split("/", 1)[0]  # Remove trailing paths or ports
+
+        # Remove port if present in host
+        host = host.split("/", 1)[0]  # Take only the hostname (remove trailing paths)
+
 
         # Determine target server
-        web_server_host = host
-        web_server_port = 80  # Default HTTP port
+        if host == "127.0.0.1":
+            web_server_host = "127.0.0.1"
+            web_server_port = 8080
+        else:
+            web_server_host = host
+            web_server_port = 80  # Default HTTP port
 
-        # Forward request to the target server
-        response = fetch_from_server(web_server_host, web_server_port, request)
+        # Fetch response from server
+        response = fetch_from_server(web_server_host, web_server_port, method, path)
         if response:
             # Send response back to the client
             client_socket.sendall(response)
 
             # Parse headers to check for Content-Type
             response_headers, response_body = response.split(b"\r\n\r\n", 1)
-            headers = response_headers.decode(errors='ignore').split("\r\n")
+            headers = response_headers.decode().split("\r\n")
             content_type_line = [line for line in headers if line.lower().startswith("content-type:")]
 
             if content_type_line:
-                content_type = content_type_line[0].split(":", 1)[1].strip()
+                content_type = content_type_line[0].split(":")[1].strip()
                 if content_type.startswith("image/"):  # Check if the response is an image
                     # Extract file extension from Content-Type
                     file_extension = content_type.split("/")[-1]
@@ -105,6 +123,7 @@ def handle_request(client_socket):
                         image_file.write(response_body)
 
                     log_message(f"Image saved as {filepath}", "green")
+
     except Exception as e:
         log_message(f"Error handling request: {e}", "red")
         client_socket.sendall(b"HTTP/1.1 500 Internal Server Error\r\n\r\n")
@@ -162,7 +181,7 @@ root.title("Proxy Server")
 root.geometry("400x500")
 
 # Log display area
-log_area = scrolledtext.ScrolledText(root, width=80, height=30, state='disabled', wrap=tk.WORD)
+log_area = scrolledtext.ScrolledText(root, width=70, height=30, state='disabled', wrap=tk.WORD)
 log_area.pack(pady=10)
 
 # Buttons
