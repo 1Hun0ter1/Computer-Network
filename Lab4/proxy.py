@@ -5,19 +5,18 @@ import os
 import tkinter as tk
 from tkinter import scrolledtext
 
-# Proxy configuration
-PROXY_HOST = '127.0.0.1'
-PROXY_PORT = 8001
-MAX_CONNECTIONS = 5
-CACHE_DIR = './cache'
-DOWNLOAD_DIR = './downloads'  # Directory to save downloaded images
-
 # Global variables for server control
 is_running = False
 
 # Logging setup
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(message)s")
 
+# Default values
+PROXY_HOST = '127.0.0.1'
+PROXY_PORT = 8001
+MAX_CONNECTIONS = 5
+CACHE_DIR = './cache'
+DOWNLOAD_DIR = './downloads'  # Directory to save downloaded images
 
 # Function to fetch content from the actual server
 def fetch_from_server(server_host, server_port, method, path, body=None):
@@ -57,7 +56,7 @@ def fetch_from_server(server_host, server_port, method, path, body=None):
 # Proxy request handler
 def handle_request(client_socket):
     try:
-        request = client_socket.recv(1024).decode()
+        request = client_socket.recv(1024).decode(errors="replace")
         request_lines = request.splitlines()
         if len(request_lines) == 0:
             return
@@ -71,20 +70,13 @@ def handle_request(client_socket):
         if not host_line:
             client_socket.sendall(b"HTTP/1.1 400 Bad Request\r\n\r\nMissing Host header")
             return
-        """
-        host_line = ['Host: http://www-x-physicsfaculty-x-top.img.addlink.cn']
-        """
-        # host = host_line[0].split(":")[1].strip()  # Extract host name
-
         host = host_line[0].split(":", 1)[1].strip()  # Initial extraction
-
 
         if host.startswith("http://") or host.startswith("https://"):
             host = host.split("://", 1)[1]  # Remove protocol part
 
         # Remove port if present in host
         host = host.split("/", 1)[0]  # Take only the hostname (remove trailing paths)
-
 
         # Determine target server
         if host == "127.0.0.1":
@@ -94,10 +86,40 @@ def handle_request(client_socket):
             web_server_host = host
             web_server_port = 80  # Default HTTP port
 
-        # Fetch response from server
-        response = fetch_from_server(web_server_host, web_server_port, method, path)
+        # Create cache key using Host + Path
+        cache_key = f"{host}{path}"
+        cache_file_path = os.path.join(CACHE_DIR, cache_key.strip('/').replace("/", "_"))
+        os.makedirs(os.path.dirname(cache_file_path), exist_ok=True)
+
+        # Handle GET requests with caching
+        if method == "GET":
+            if os.path.exists(cache_file_path):
+                log_message(f"Cache hit for {path} on {host}", "green")
+                with open(cache_file_path, 'rb') as f:
+                    response = f.read()
+            else:
+                log_message(f"Cache miss for {path} on {host}. Fetching from server.", "orange")
+                response = fetch_from_server(web_server_host, web_server_port, method, path)
+                if response:
+                    # Extract status line and content type
+                    status_line = response.split(b"\r\n", 1)[0].decode()
+                    if "200 OK" in status_line:
+                        with open(cache_file_path, 'wb') as f:
+                            f.write(response)
+
+        # Handle POST, PUT, DELETE requests
+        elif method in ["POST", "PUT", "DELETE"]:
+            body = None
+            if "Content-Length" in request:
+                content_length = int([line.split(": ")[1] for line in request_lines if "Content-Length" in line][0])
+                headers_end = request.find("\r\n\r\n") + 4
+                body = request[headers_end:headers_end + content_length]
+            response = fetch_from_server(web_server_host, web_server_port, method, path, body)
+        else:
+            response = b"HTTP/1.1 405 Method Not Allowed\r\n\r\n"
+
+        # Send response back to client
         if response:
-            # Send response back to the client
             client_socket.sendall(response)
 
             # Parse headers to check for Content-Type
@@ -140,8 +162,15 @@ def log_message(message, color="black"):
     log_area.see(tk.END)
 
 
+# Function to start the proxy server with custom inputs from UI
 def start_proxy():
-    global is_running
+    global PROXY_HOST, PROXY_PORT, MAX_CONNECTIONS, is_running
+
+    # Get values from the UI
+    PROXY_HOST = proxy_ip_entry.get()
+    PROXY_PORT = int(proxy_port_entry.get())
+    MAX_CONNECTIONS = int(max_connections_entry.get())
+
     if is_running:
         log_message("Server is already running!", "orange")
         return
@@ -178,17 +207,32 @@ def run_proxy_server():
 # GUI setup
 root = tk.Tk()
 root.title("Proxy Server")
-root.geometry("400x500")
+root.geometry("400x550")
 
 # Log display area
-log_area = scrolledtext.ScrolledText(root, width=70, height=30, state='disabled', wrap=tk.WORD)
+log_area = scrolledtext.ScrolledText(root, width=70, height=15, state='disabled', wrap=tk.WORD)
 log_area.pack(pady=10)
 
-# Buttons
+# Buttons and input fields
+tk.Label(root, text="Proxy IP:").pack(pady=5)
+proxy_ip_entry = tk.Entry(root)
+proxy_ip_entry.insert(0, "127.0.0.1")
+proxy_ip_entry.pack(pady=5)
+
+tk.Label(root, text="Proxy Port:").pack(pady=5)
+proxy_port_entry = tk.Entry(root)
+proxy_port_entry.insert(0, "8001")
+proxy_port_entry.pack(pady=5)
+
+tk.Label(root, text="Max Connections:").pack(pady=5)
+max_connections_entry = tk.Entry(root)
+max_connections_entry.insert(0, "5")
+max_connections_entry.pack(pady=5)
+
 start_button = tk.Button(root, text="Start Proxy", command=start_proxy, bg="green", fg="white")
-start_button.pack(pady=5)
+start_button.pack(pady=10)
 
 stop_button = tk.Button(root, text="Stop Proxy", command=stop_proxy, bg="red", fg="white")
-stop_button.pack(pady=5)
+stop_button.pack(pady=10)
 
 root.mainloop()

@@ -36,7 +36,7 @@ request_times = defaultdict(list)
 # Initialize Tkinter GUI
 root = tk.Tk()
 root.title("Server Dashboard")
-root.geometry("400x500")
+root.geometry("400x550")
 
 # Log display area in GUI
 log_area = scrolledtext.ScrolledText(root, width=90, height=20, state='disabled', wrap='word', font=('Courier', 10))
