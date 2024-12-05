@@ -5,7 +5,6 @@ This project contains the code implementations for **Computer Network Lab Design
 - `Lab2: traceroute`
 - `Lab3: web server`
 - `Lab4: web proxy`
-- `requirements.txt`
 
 ## Installation and Usage
 
@@ -23,13 +22,9 @@ git clone git@github.com:1Hun0ter1/Computer-Network.git
 ### 3. Running Each Lab
 Please find the details in each lab's `README` file.
 
-## Acknowledgments
-
-Thanks for the guidance of teacher `Anna` and class assistant `Shipeng Zhang`.
-
 ## Citation
 
-If you find our work useful in your research, please consider citing:
+If you find our work useful in your research, please consider citing our team project:
 
 ```
 @program{cw2024CNCD,
@@ -39,3 +34,6 @@ If you find our work useful in your research, please consider citing:
 }
 ```
 
+## Acknowledgments
+
+Thanks for the guidance of teacher `Anna` and class assistant `Shipeng Zhang`.
