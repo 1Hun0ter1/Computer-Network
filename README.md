@@ -27,7 +27,7 @@ Please find the details in each lab's `README` file.
 If you find our work useful in your research, please consider citing our team project:
 
 ```
-@program{cw2024CNCD,
+@program{CNCD2024Huang,
   title={Computer Network Codes Design},
   author={Hao Huang, Yitong Zhou, Tianshu Wen, Zijie Chen, Yu Meng}
   year={2024}
@@ -36,4 +36,4 @@ If you find our work useful in your research, please consider citing our team pr
 
 ## Acknowledgments
 
-Thanks for the guidance of teacher `Anna` and class assistant `Shipeng Zhang`.
+Thanks for the guidance of teacher `Anna Li` and class assistant `Shipeng Zhang`.
